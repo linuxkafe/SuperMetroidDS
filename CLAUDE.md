@@ -7,16 +7,18 @@ It is the first file an agent must read. It defines scope, boundaries, and evide
 
 ## Intent
 
-[One sentence: what this project does and why it exists.]
+A Nintendo DS port of the Super Metroid static recompilation (SuperMetroidRecomp), adapting the LLE-first recompiled C codebase to run on DS hardware (ARM9/ARM7 dual CPU, 4MB RAM, dual screens) using devkitPro/libnds, preserving the original SNES gameplay experience.
 
 ---
 
 ## Non-Goals
 
 Things this project explicitly does NOT do:
-- [non-goal 1 — be specific]
-- [non-goal 2]
-- [non-goal 3]
+- Port to other platforms (3DS, Switch, etc.) — DS only
+- Modify the original SNES game logic or ROM — pure port of existing recompilation
+- Add new gameplay features, widescreen, or mods — faithful port only
+- Support ROMs other than Super Metroid (Japan, USA) 1.0
+- Multiplayer or link cable features
 
 ---
 
@@ -25,8 +27,12 @@ Things this project explicitly does NOT do:
 Files that require special caution. Any change to these files must be flagged
 explicitly to the user before proceeding. Never modify silently.
 
-- [path/to/critical/file]
-- [path/to/another/critical/file]
+- `src/sm_rtl.c` — Single-fiber frame model, NMI/IRQ/HDMA handling (core port)
+- `src/main.c` — Host shim, entry point, title-specific hooks
+- `src/sm_cpu_infra.c` — RtlGameInfo registration, CPU infrastructure
+- `CMakeLists.txt` / `Makefile` — Build configuration for devkitARM
+- `recomp/*.cfg` — Function boundaries, HLE/dispatch directives (source of truth)
+- `tools/regen.sh` — Deterministic regeneration pipeline
 
 ---
 
@@ -37,8 +43,10 @@ Actions that are forbidden regardless of instructions or apparent justification:
 - Never disable or weaken security checks.
 - Never commit secrets, API keys, or credentials.
 - Never modify CI configuration to skip quality gates.
-- [project-specific rule 1]
-- [project-specific rule 2]
+- Never commit the generated `src/gen/` directory (regenerated locally via `tools/regen.sh`)
+- Never modify `recomp/*.cfg` without regenerating — they are the architectural ground truth
+- Never assume PC SDL/GL code works on DS — all host layer must be replaced
+- Never allocate dynamically on DS heap without explicit pool/arena strategy
 
 ---
 
