@@ -16,3 +16,6 @@ env/
 .tmp/
 aes/verification/
 .llm_venv/
+# AES internal tracking (not for publication)
+aes/
+.aes/

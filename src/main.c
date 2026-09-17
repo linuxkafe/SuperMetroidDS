@@ -1,11 +1,15 @@
-#include <nds.h>
+#include "video.h"
 
 int main(void) {
-    // Minimal ARM9 entry - just VBlank loop
-    // Calico uses different IRQ/console APIs, so keep it minimal for now
+    // Initialize video subsystem (dual-screen)
+    videoInit();
 
     while (1) {
         swiWaitForVBlank();
+
+        if (keysDown() & KEY_START) {
+            break;
+        }
     }
 
     return 0;
