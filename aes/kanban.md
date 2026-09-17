@@ -2,13 +2,12 @@
 project: SuperMetroidDS
 created: 2026-09-17
 current_sprint: sprint-01
-current_ticket: T001
+current_ticket: T002
 ---
 
 # Kanban — SuperMetroidDS
 
 ## Backlog
-- T002: Submodule structure for SuperMetroidRecomp + snesrecomp
 - T003: Port memory map: define ARM9/ARM7 memory regions, pools, arenas
 - T004: Implement minimal ARM9 entry point + VBlank handler
 - T005: Port `sm_rtl.c`: single-fiber frame model to DS (ARM9 main loop)
@@ -29,7 +28,8 @@ current_ticket: T001
 - T020: Regression testing: attract demo, new game, doors, save
 
 ## Sprint 1: Foundation & Build System
-- T001: Initialize devkitARM CMake/Makefile, produce minimal `.nds` — **IN PROGRESS**
+- T001: Initialize devkitARM CMake/Makefile, produce minimal `.nds` — **DONE**
+- T002: Set up submodule structure for SuperMetroidRecomp + snesrecomp — **IN PROGRESS**
 
 ## Done
-(none)
+- T001: Initialize devkitARM CMake/Makefile, produce minimal `.nds`
