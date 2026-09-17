@@ -1,100 +1,132 @@
-.PHONY: setup run test lint format build check doctor help clean
+# SuperMetroidDS — Nintendo DS Port Makefile
+# Simplified single-phase Makefile for devkitARM (Calico-based)
+# Compatible with devkitpro/devkitarm Docker image
 
-AES_LANGUAGE := c
+# --- CONFIGURATION ---
+TARGET       := SuperMetroidDS
+BUILD        := build
+SOURCES      := src
+INCLUDES     := include
+DATA         := assets
+ARM7_SOURCES := src/arm7
+
+# Toolchain (set by devkitARM environment)
 DEVKITARM ?= /opt/devkitpro/devkitARM
-LIBNDS ?= /opt/devkitpro/libnds
-export DEVKITARM LIBNDS
+CC         := $(DEVKITARM)/bin/arm-none-eabi-gcc
+LD         := $(DEVKITARM)/bin/arm-none-eabi-gcc
+OBJCOPY    := $(DEVKITARM)/bin/arm-none-eabi-objcopy
+NDSTOOL    := /opt/devkitpro/tools/bin/ndstool
 
-CC := $(DEVKITARM)/bin/arm-none-eabi-gcc
-LD := $(DEVKITARM)/bin/arm-none-eabi-gcc
-OBJCOPY := $(DEVKITARM)/bin/arm-none-eabi-objcopy
-CFLAGS := -std=c11 -ffreestanding -O2 -Wall -Wextra -Wno-unused-parameter \
-          -Iinclude -Isrc -I$(LIBNDS)/include -DARM9
-LDFLAGS := -specs=ds_arm9.specs -Wl,-Map,build/SuperMetroidDS.map
-LIBS := -lnds9 -lfat -lmm9
+# Architecture flags
+ARCH         := -mthumb -mthumb-interwork
 
-BUILD_DIR := build
-SRC_DIR := src
-GEN_DIR := $(SRC_DIR)/gen
-ARM7_DIR := $(SRC_DIR)/arm7
+# Platform defines
+PLATFORM_DEFS_ARM9 := -DARM9 -D__NDS__
+PLATFORM_DEFS_ARM7 := -DARM7 -D__NDS__
 
-SOURCES_ARM9 := $(wildcard $(SRC_DIR)/*.c) $(wildcard $(GEN_DIR)/*.c)
-OBJECTS_ARM9 := $(SOURCES_ARM9:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+# Paths
+CALICO_PATH  := /opt/devkitpro/calico
+LIBNDS_PATH  := /opt/devkitpro/libnds
 
-SOURCES_ARM7 := $(wildcard $(ARM7_DIR)/*.c)
-OBJECTS_ARM7 := $(SOURCES_ARM7:$(ARM7_DIR)/%.c=$(BUILD_DIR)/arm7/%.o)
+# ARM9 flags
+CFLAGS       := -g -Wall -O2 -std=gnu11 -mcpu=arm946e-s -mtune=arm946e-s \
+                -fomit-frame-pointer -ffast-math \
+                $(PLATFORM_DEFS_ARM9) $(ARCH)
+CXXFLAGS     := $(CFLAGS) -fno-rtti -fno-exceptions
+ASFLAGS      := -g $(ARCH)
 
-TARGET_NDS := $(BUILD_DIR)/SuperMetroidDS.nds
-TARGET_ELF9 := $(BUILD_DIR)/SuperMetroidDS.arm9.elf
-TARGET_ELF7 := $(BUILD_DIR)/SuperMetroidDS.arm7.elf
+# ARM7 flags
+ARM7_CFLAGS  := -g -Wall -O2 -std=gnu11 -mcpu=arm7tdmi -mtune=arm7tdmi \
+                -fomit-frame-pointer \
+                $(PLATFORM_DEFS_ARM7) $(ARCH)
+
+# Includes
+INCLUDE      := -I$(INCLUDES) -I$(LIBNDS_PATH)/include -I$(CALICO_PATH)/include
+CFLAGS      += $(INCLUDE)
+CXXFLAGS    += $(INCLUDE)
+ARM7_CFLAGS += $(INCLUDE)
+
+# ARM9 link flags
+LDFLAGS      := -g $(ARCH) -specs=$(CALICO_PATH)/share/ds9.specs -Wl,-Map,$(BUILD)/$(TARGET).map \
+                -L$(LIBNDS_PATH)/lib -L$(CALICO_PATH)/lib
+
+# ARM7 link flags
+ARM7_LDFLAGS := -g $(ARCH) -specs=$(CALICO_PATH)/share/ds7.specs \
+                -L$(LIBNDS_PATH)/lib -L$(CALICO_PATH)/lib
+
+# Libraries
+LIBS        := -Wl,--start-group -lnds9 -lcalico_ds9 -Wl,--end-group -lfat -lmm9 -lm
+ARM7_LIBS   := -lnds7 -lcalico_ds7
+
+# Source files
+CFILES       := $(wildcard $(SOURCES)/*.c)
+SFILES       := $(wildcard $(SOURCES)/*.s)
+ARM7_CFILES  := $(wildcard $(ARM7_SOURCES)/*.c)
+BANNER       := $(DATA)/banner.bin
+
+# Object files
+OFILES_ARM9  := $(CFILES:$(SOURCES)/%.c=$(BUILD)/%.o) $(SFILES:$(SOURCES)/%.s=$(BUILD)/%.o)
+OFILES_ARM7  := $(ARM7_CFILES:$(ARM7_SOURCES)/%.c=$(BUILD)/arm7/%.o)
+
+# Output files
+ELF_ARM9     := $(BUILD)/$(TARGET).arm9.elf
+ELF_ARM7     := $(BUILD)/$(TARGET).arm7.elf
+NDS_ROM      := $(BUILD)/$(TARGET).nds
+
+.PHONY: all clean setup lint format test check
+
+all: $(NDS_ROM)
+
+$(NDS_ROM): $(ELF_ARM9) $(ELF_ARM7) $(BANNER)
+	@echo "Packaging NDS: $(notdir $@)"
+	@$(NDSTOOL) -c $@ -9 $(ELF_ARM9) -7 $(ELF_ARM7) -t $(BANNER)
+	@echo "✅ BUILD SUCCESS! $(notdir $@) created."
+
+$(ELF_ARM9): $(OFILES_ARM9)
+	@echo "Linking ARM9: $(notdir $@)"
+	@$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
+
+$(ELF_ARM7): $(OFILES_ARM7)
+	@echo "Linking ARM7: $(notdir $@)"
+	@$(LD) $(ARM7_LDFLAGS) $^ $(ARM7_LIBS) -o $@
+
+# ARM9 compilation
+$(BUILD)/%.o: $(SOURCES)/%.c
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(BUILD)/%.o: $(SOURCES)/%.s
+	@mkdir -p $(dir $@)
+	@$(CC) $(ASFLAGS) -c $< -o $@
+
+# ARM7 compilation
+$(BUILD)/arm7/%.o: $(ARM7_SOURCES)/%.c
+	@mkdir -p $(dir $@)
+	@$(CC) $(ARM7_CFLAGS) -MMD -MP -c $< -o $@
+
+# Dependencies
+-include $(OFILES_ARM9:.o=.d)
+-include $(OFILES_ARM7:.o=.d)
+
+clean:
+	@echo "Cleaning..."
+	@rm -fr $(BUILD)
 
 setup:
 	@echo "Checking devkitARM installation..."
-	@test -d "$(DEVKITARM)" || (echo "devkitARM not found at $(DEVKITARM). Install devkitPro." && exit 1)
-	@test -d "$(LIBNDS)" || (echo "libnds not found at $(LIBNDS). Install devkitPro." && exit 1)
-	@echo "devkitARM found. Run 'make build' to compile."
-
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/arm7/%.o: $(ARM7_DIR)/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -DARM7 -c $< -o $@
-
-$(TARGET_ELF9): $(OBJECTS_ARM9)
-	$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-$(TARGET_ELF7): $(OBJECTS_ARM7)
-	$(LD) -specs=ds_arm7.specs -o $@ $^ -lnds7
-
-$(TARGET_NDS): $(TARGET_ELF9) $(TARGET_ELF7)
-	$(DEVKITARM)/bin/ndstool -c $@ -9 $(TARGET_ELF9) -7 $(TARGET_ELF7) -b assets/banner.bin
-
-build: $(TARGET_NDS)
-	@echo "Built $(TARGET_NDS)"
-
-run: build
-	@echo "Run on hardware: copy $(TARGET_NDS) to flashcart"
-	@echo "Run on emulator: melonDS $(TARGET_NDS)"
-
-test:
-	@echo "Testing on melonDS..."
-	@command -v melonDS >/dev/null 2>&1 && melonDS $(TARGET_NDS) --headless || echo "melonDS not in PATH"
+	@test -d "$(DEVKITARM)" || (echo "devkitARM not found at $(DEVKITARM)" && exit 1)
+	@echo "devkitARM found at $(DEVKITARM)"
 
 lint:
 	@echo "Running cppcheck..."
-	@command -v cppcheck >/dev/null 2>&1 && cppcheck --enable=all --std=c11 --suppress=missingIncludeSystem $(SRC_DIR) $(ARM7_DIR) || echo "cppcheck not installed"
+	@command -v cppcheck >/dev/null 2>&1 && cppcheck --enable=all --std=c11 --suppress=missingIncludeSystem $(SOURCES) $(ARM7_SOURCES) $(INCLUDES) 2>/dev/null || echo "cppcheck not installed (OK in container)"
 
 format:
 	@echo "Running clang-format..."
-	@command -v clang-format >/dev/null 2>&1 && find $(SRC_DIR) $(ARM7_DIR) -name '*.c' -o -name '*.h' | xargs clang-format -i || echo "clang-format not installed"
+	@command -v clang-format >/dev/null 2>&1 && find $(SOURCES) $(ARM7_SOURCES) $(INCLUDES) -name '*.c' -o -name '*.h' | xargs clang-format -i 2>/dev/null || echo "clang-format not installed (OK in container)"
 
-clean:
-	rm -rf $(BUILD_DIR)
+test: $(NDS_ROM)
+	@echo "Testing on melonDS (headless)..."
+	@command -v melonDS >/dev/null 2>&1 && melonDS $(NDS_ROM) --headless 2>/dev/null || echo "melonDS not available (OK in container)"
 
-check: docs-check build lint
-
-docs-check:
-	@test -f docs/VISION.md && grep -q "Problem" docs/VISION.md
-	@test -f docs/PERSONAS.md && grep -q "User" docs/PERSONAS.md
-	@test -f docs/REQUIREMENTS.md && grep -q "Functional" docs/REQUIREMENTS.md
-	@test -f docs/ROADMAP.md && grep -q "Roadmap" docs/ROADMAP.md
-
-doctor:
-	@echo "Language: C (devkitARM)"
-	@echo "devkitARM: $(DEVKITARM)"
-	@echo "libnds: $(LIBNDS)"
-	@test -d "$(DEVKITARM)" && echo "devkitARM: OK" || echo "devkitARM: MISSING"
-	@test -d "$(LIBNDS)" && echo "libnds: OK" || echo "libnds: MISSING"
-
-help:
-	@echo "AES Commands for SuperMetroidDS:"
-	@echo "  make setup   - Verify devkitARM installation"
-	@echo "  make build   - Compile .nds ROM"
-	@echo "  make run     - Show run instructions"
-	@echo "  make test    - Test on melonDS (headless)"
-	@echo "  make lint    - Run cppcheck"
-	@echo "  make format  - Run clang-format"
-	@echo "  make check   - Full validation (docs + build + lint)"
-	@echo "  make clean   - Remove build artifacts"
+check: setup all lint

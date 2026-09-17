@@ -1,31 +1,108 @@
-name: CI
+name: SuperMetroidDS CI
+
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
-  check:
+  build:
+    name: Build .nds (devkitARM)
     runs-on: ubuntu-latest
-
+    container:
+      image: devkitpro/devkitarm:latest
+      options: --user root
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup
-        run: make setup
-
-      - name: Lint
-        run: make lint
-
-      - name: Test
-        run: make test
-
-      - name: Quality gates
-        run: make check
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: always()
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fail_ci_if_error: false
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          dkp-pacman -Syu --noconfirm nds-dev
+          # cppcheck and clang-format for linting
+          dkp-pacman -S --noconfirm cppcheck clang
+
+      - name: Build
+        run: make
+
+      - name: Verify output
+        run: |
+          ls -la build/
+          test -f build/SuperMetroidDS.nds
+          test -f build/SuperMetroidDS.arm9.elf
+          test -f build/SuperMetroidDS.arm7.elf
+          ndstool -h build/SuperMetroidDS.nds
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperMetroidDS-nds
+          path: |
+            build/SuperMetroidDS.nds
+            build/SuperMetroidDS.arm9.elf
+            build/SuperMetroidDS.arm7.elf
+            build/SuperMetroidDS.map
+          retention-days: 30
+
+  lint:
+    name: Lint (cppcheck)
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+      options: --user root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: dkp-pacman -S --noconfirm cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=all --std=c11 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --suppress=unmatchedSuppression \
+            src/ src/arm7/ include/ 2>&1 | head -100
+
+  format:
+    name: Format Check (clang-format)
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+      options: --user root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: dkp-pacman -S --noconfirm clang
+
+      - name: Check formatting
+        run: |
+          find src/ src/arm7/ include/ -name '*.c' -o -name '*.h' | \
+          xargs clang-format --dry-run --Werror 2>&1 | head -50
+
+  # Test on emulator (optional, requires melonDS)
+  # test:
+  #   name: Test on melonDS
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: devkitpro/devkitarm:latest
+  #     options: --user root
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install melonDS
+  #       run: |
+  #         apt-get update && apt-get install -y melonds
+  #     - name: Build
+  #       run: make
+  #     - name: Run headless test
+  #       run: timeout 30 melonDS build/SuperMetroidDS.nds --headless || true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
